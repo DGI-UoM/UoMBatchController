@@ -9,13 +9,13 @@ it will also write the ocr for the tiffs [pdf and txt output]
 
 TODO: move tiff to outdir
 TODO: config fedora login
-TODO: finish fedora ingest
+TODO: finish fedora book/book page ingest
 TODO: kill all files when done
+TODO: record current fedora book object on timed end so that book page ingestion can continue
 '''
 from islandoraUtils import converter
 from lxml import etree
-import logging, sys, os, time
-
+import logging, sys, os, time, subprocess
 from fcrepo.connection import Connection
 from fcrepo.client import FedoraClient 
 
@@ -29,17 +29,49 @@ def startFcrepo():
     global fedora 
     fedora=FedoraClient(connection)
     return True
+
 '''
-Helper function that handles adding and configuring a fedora object based on the input image and mods file
-do i need something separate to add a book collection boj?
+Helper function that handles creating the book collection obj in fedora
+@param modsFilePath: the source of meta data
+
+@return bool: true on function success false on fail
 '''
-def addObjToFedora(inputTiff,modsFilePath):
+def addBookToFedora():
     #xml file
     parser = etree.XMLParser(remove_blank_text=True)
     xmlFile = etree.parse(modsFilePath, parser)
     xmlFileRoot = xmlFile.getroot()
     #if there is no book create a book
-    '''#a try catch that trys to get the pid and creates it if it doesnt exist... but how to deal with collisions?... move to only test once... when mods file created
+    '''#a try catch that trys to get the pid and creates it if it doesn't exist... but how to deal with collisions?... move to only test once... when mods file created
+    if pid 'uofm:'+os.path.dirname(modsFilePath)
+    '''
+     #create the fedora book page object
+    pid = fedora.getNextPID(u'uofm')
+    myLabel=u(os.path.basename(os.path.dirname(modsFilePath)))
+    obj = fedora.createObject(pid, label=myLabel)
+    
+    modsUrl=u'http://baduhenna.lib.umanitoba.ca'
+    
+    obj.addDataStream('MODS', modsUrl, label=u'MODS',
+             mimeType=u'text/xml', controlGroup=u'X',
+             logMessage=u'Added basic mods meta data.')
+    
+    return True
+'''
+Helper function that handles adding and configuring a fedora object for a book page based on the input image and mods file
+do i need something separate to add a book collection boj?
+@param inputTiff:  the archival data source
+@param modsFilePath: the source of meta data
+
+@return bool: true on function success false on fail
+'''
+def addBookPageToFedora(inputTiff):
+    #xml file
+    parser = etree.XMLParser(remove_blank_text=True)
+    xmlFile = etree.parse(modsFilePath, parser)
+    xmlFileRoot = xmlFile.getroot()
+    #if there is no book create a book
+    '''#a try catch that trys to get the pid and creates it if it doesn't exist... but how to deal with collisions?... move to only test once... when mods file created
     if pid 'uofm:'+os.path.dirname(modsFilePath)
     '''
     
@@ -77,9 +109,9 @@ def addObjToFedora(inputTiff,modsFilePath):
         return False
     
     #create the fedora book page object
-    pid = client.getNextPID(u'uofm')
+    pid = fedora.getNextPID(u'uofm')
     myLabel=u('Page'+str(pageNumber))
-    obj = client.createObject(pid, label=myLabel)
+    obj = fedora.createObject(pid, label=myLabel)
     
     tiffUrl=u'http://baduhenna.lib.umanitoba.ca'
     jp2Url=u'http://baduhenna.lib.umanitoba.ca'
@@ -109,11 +141,14 @@ def addObjToFedora(inputTiff,modsFilePath):
 Helper function that will finish off the directory that was being worked on during the last run of the script [if there was one]
 '''
 def resumePastOperations():
+    #init some necessary values
     inFile=open(resumeFilePath,'r')
     resumeDirIn=''
     resumeDirOut=''
     resumeFiles=[]
     count=0
+    
+    #figure out what files need to be worked on
     for line in inFile:
         if count==0:
             resumeDirIn=line[0:len(line)-1]
@@ -123,6 +158,9 @@ def resumePastOperations():
             resumeFiles.append(line[0:len(line)-1])
         count+=1
     inFile.close()
+    
+    #metadata file
+    modsFilePath=os.path.join(resumeDirIn,'mods_book.xml')
     #remove that file so that it doesn't get used as a resume point again
     os.remove(resumeFilePath)
     #do that dir
@@ -131,7 +169,8 @@ def resumePastOperations():
             if os.path.isdir(resumeDirOut)==False:
                 os.mkdir(resumeDirOut)
             converter.tif_to_jp2(os.path.join(resumeDirIn,file),resumeDirOut,'default','default')
-            #converter.tif_OCR(os.path.join(resumeDirIn,file),resumeDirOut,{'PDF':'default','Text':'default'})
+            converter.tif_OCR(os.path.join(resumeDirIn,file),resumeDirOut,{'PDF':'default','Text':'default'})
+            #addBookPageToFedora(os.path.join(resumeDirIn,file))
     return True
 '''
 go through a directory performing the conversions OCR etc.
@@ -158,7 +197,8 @@ def performOpps():
             if os.path.isdir(outDir)==False:
                 os.mkdir(outDir)
             converter.tif_to_jp2(os.path.join(currentDir,file),outDir,'default','default')
-            #converter.tif_OCR(os.path.join(currentDir,file),outDir,{'PDF':'default','Text':'default'})
+            converter.tif_OCR(os.path.join(currentDir,file),outDir,{'PDF':'default','Text':'default'})
+            #addBookPageToFedora(os.path.join(currentDir,file))
         #remove file that has been operated on so it will not be operated on again on a script resume
         if fileList.count(file)!=0:#fixes a bug where created files were throwing errors
             fileList.remove(file)
@@ -184,6 +224,10 @@ logFile=os.path.join(logDir,'UoM_Batch_Controller'+time.strftime('%y_%m_%d')+'.l
 #path for script's internal logging
 resumeFilePath=os.path.join(logDir,'BatchControllerState.log')
 logging.basicConfig(filename=logFile,level=logging.DEBUG)
+
+#perl script location
+marc2mods=os.path.join(os.getcwd(),'UoMScripts','marc2mods.pl')
+
 #start up fedora connection
 #startFcrepo()
 
@@ -217,7 +261,15 @@ for dir in sourceDirList:
         for file in os.listdir(currentDir):
             if file[file.rindex('.'):len(file)]=='.marc' or file[file.rindex('.'):len(file)]=='.mrc':
                 MARC_Check=True
-                #run Jonathan's perl script here
+                #run Jonathan's perl script here and record the new location of the mods file
+                os.chdir(currentDir)
+                perlCall=['perl',marc2mods,os.path.join(currentDir,file)]
+                subprocess.call(perlCall)
+                modsFilePath=os.path.join(currentDir,'mods_book.xml')
+                os.rename(modsFilePath, os.path.join(outDir,'mods_book.xml'))
+                modsFilePath=os.path.join(outDir,'mods_book.xml')
+                #add book obj to fedora
+                #addBookToFedora()
                 #change the extension of the marc file so that this directory is not used again 
                 fileList.remove(file)
                 os.rename(os.path.join(currentDir, file),os.path.join(currentDir,file+'.dun'))
