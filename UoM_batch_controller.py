@@ -7,15 +7,13 @@ Created on Apr 5, 2011
 This script will read all the tif files in a dir and convert them to jp2 files
 it will also write the ocr for the tiffs [pdf and txt output]
 
-TODO: move tiff to outdir
-TODO: config fedora login
 TODO: finish fedora book/book page ingest
 TODO: kill all files when done
 TODO: record current fedora book object on timed end so that book page ingestion can continue
 '''
 from islandoraUtils import converter
 from lxml import etree
-import logging, sys, os, time, subprocess
+import logging, sys, os, time, subprocess, ConfigParser, shutil
 from fcrepo.connection import Connection
 from fcrepo.client import FedoraClient 
 
@@ -23,9 +21,17 @@ from fcrepo.client import FedoraClient
 helper function that starts up the fedora connection
 '''
 def startFcrepo():
-    connection = Connection('http://localhost:8080/fedora',
-                    username='fedoraAdmin',
-                     password='fedoraAdmin')
+    
+    config = ConfigParser.ConfigParser()
+
+    config.read(os.path.join(os.getcwd(),'UoMScripts','UoM.cfg'))
+    
+    url=config.get('Fedora','url')
+    myUserName=config.get('Fedora', 'username')
+    myPassword=config.get('Fedora','password')
+    connection = Connection(url,
+                    username=myUserName,
+                     password=myPassword)
     global fedora 
     fedora=FedoraClient(connection)
     return True
@@ -158,7 +164,6 @@ def resumePastOperations():
             resumeFiles.append(line[0:len(line)-1])
         count+=1
     inFile.close()
-    
     #metadata file
     modsFilePath=os.path.join(resumeDirIn,'mods_book.xml')
     #remove that file so that it doesn't get used as a resume point again
@@ -166,8 +171,6 @@ def resumePastOperations():
     #do that dir
     for file in resumeFiles:
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
-            if os.path.isdir(resumeDirOut)==False:
-                os.mkdir(resumeDirOut)
             converter.tif_to_jp2(os.path.join(resumeDirIn,file),resumeDirOut,'default','default')
             converter.tif_OCR(os.path.join(resumeDirIn,file),resumeDirOut,{'PDF':'default','Text':'default'})
             #addBookPageToFedora(os.path.join(resumeDirIn,file))
@@ -194,8 +197,6 @@ def performOpps():
             sys.exit()
 
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
-            if os.path.isdir(outDir)==False:
-                os.mkdir(outDir)
             converter.tif_to_jp2(os.path.join(currentDir,file),outDir,'default','default')
             converter.tif_OCR(os.path.join(currentDir,file),outDir,{'PDF':'default','Text':'default'})
             #addBookPageToFedora(os.path.join(currentDir,file))
@@ -216,6 +217,11 @@ else:
     print('Please verify source and/or destination directory.')
     sys.exit(-1)
     
+
+#add cli,imageMagick to the path and hope for the best
+os.environ['PATH']=os.environ["PATH"]+':/usr/local/ABBYY/FREngine-Linux-i686-9.0.0.126675/Samples/Samples/CommandLineInterface'
+os.environ['PATH']=os.environ["PATH"]+':/usr/local/Linux-x86-64'
+
 #configure logging
 logDir=os.path.join(sourceDir,'logs')
 if os.path.isdir(logDir)==False:
@@ -225,19 +231,22 @@ logFile=os.path.join(logDir,'UoM_Batch_Controller'+time.strftime('%y_%m_%d')+'.l
 resumeFilePath=os.path.join(logDir,'BatchControllerState.log')
 logging.basicConfig(filename=logFile,level=logging.DEBUG)
 
+#set cwd 
+#os.chdir(MYDIR!!!)
 #perl script location
 marc2mods=os.path.join(os.getcwd(),'UoMScripts','marc2mods.pl')
-
+#config file location
+#if the destination directory doesn't exist create it
+if os.path.isdir(destDir)==False:
+    os.mkdir(destDir)
 #start up fedora connection
-#startFcrepo()
+startFcrepo()
 
 #handle a resume of operations if necessary
 if os.path.isfile(resumeFilePath):
     resumePastOperations()
-    
 sourceDirList = ()#list of directories to be operated on
-#add cli to the path and hope for the best
-os.environ['PATH']=os.environ["PATH"]+':/usr/local/ABBYY/FREngine-Linux-i686-9.0.0.126675/Samples/Samples/CommandLineInterface'
+
 #check and see if source dir is a directory
 if os.path.isdir(sourceDir) == False:
     logging.error('Indicated source directory is not a directory.')
@@ -253,6 +262,7 @@ else:
 for dir in sourceDirList:
     currentDir=os.path.join(sourceDir,dir)
     outDir=os.path.join(destDir,dir)
+        
     if os.path.isdir(currentDir):#only run this on a directory
         #get all files from current dir
         fileList = os.listdir(currentDir)
@@ -260,13 +270,15 @@ for dir in sourceDirList:
         MARC_Check = False
         for file in os.listdir(currentDir):
             if file[file.rindex('.'):len(file)]=='.marc' or file[file.rindex('.'):len(file)]=='.mrc':
+                if os.path.isdir(outDir)==False:
+                    os.mkdir(outDir)
                 MARC_Check=True
                 #run Jonathan's perl script here and record the new location of the mods file
                 os.chdir(currentDir)
                 perlCall=['perl',marc2mods,os.path.join(currentDir,file)]
                 subprocess.call(perlCall)
                 modsFilePath=os.path.join(currentDir,'mods_book.xml')
-                os.rename(modsFilePath, os.path.join(outDir,'mods_book.xml'))
+                shutil.copyfile(modsFilePath, os.path.join(outDir,'mods_book.xml'))
                 modsFilePath=os.path.join(outDir,'mods_book.xml')
                 #add book obj to fedora
                 #addBookToFedora()
