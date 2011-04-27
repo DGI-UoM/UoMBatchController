@@ -12,6 +12,7 @@ TODO: kill all files when done
 TODO: record current fedora book object on timed end so that book page ingestion can continue
 '''
 from islandoraUtils import converter
+from islandoraUtils import fedora_relationships
 from lxml import etree
 import logging, sys, os, time, subprocess, ConfigParser, shutil
 from fcrepo.connection import Connection
@@ -44,23 +45,32 @@ Helper function that handles creating the book collection obj in fedora
 '''
 def addBookToFedora():
     #xml file
+    '''
     parser = etree.XMLParser(remove_blank_text=True)
     xmlFile = etree.parse(modsFilePath, parser)
     xmlFileRoot = xmlFile.getroot()
+    '''
     #if there is no book create a book
     '''#a try catch that trys to get the pid and creates it if it doesn't exist... but how to deal with collisions?... move to only test once... when mods file created
     if pid 'uofm:'+os.path.dirname(modsFilePath)
     '''
-     #create the fedora book page object
-    pid = fedora.getNextPID(u'uofm')
-    myLabel=u(os.path.basename(os.path.dirname(modsFilePath)))
-    obj = fedora.createObject(pid, label=myLabel)
+#create the fedora book page object
+    global bookPid#global for write to file and use
+    #bookPid = fedora.getNextPID(u'uofm')
+    bookPid = fedora.getNextPID(u'Awill')
+    myLabel=unicode(os.path.basename(os.path.dirname(modsFilePath)))
+    obj = fedora.createObject(bookPid, label=myLabel)
     
-    modsUrl=u'http://baduhenna.lib.umanitoba.ca'
-    
-    obj.addDataStream('MODS', modsUrl, label=u'MODS',
+    modsUrl='http://baduhenna.lib.umanitoba.ca/ingest/'+os.path.basename(os.path.dirname(modsFilePath)+'/mods_book.xml')
+    modsUrl=unicode(modsUrl)
+    '''obj.addDataStream(u'MODS', modsUrl, label=u'MODS',
              mimeType=u'text/xml', controlGroup=u'X',
              logMessage=u'Added basic mods meta data.')
+    '''
+    objRelsExt=fedora_relationships.rels_ext(obj,fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#'))
+    objRelsExt.addRelationship('isMemberOf','islandora:top')
+    objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'bookCModel')
+    objRelsExt.update()
     
     return True
 '''
@@ -82,7 +92,7 @@ def addBookPageToFedora(inputTiff):
     '''
     
     #determine page number
-    pageNumber=int(inputTiff[0:inputTiff.index('.')])
+    pageNumber=int(inputTiff[0:inputTiff.index('_')])
     #if front cover
     if inputTiff.count('front_cover')==1:
         pageNumber=1
@@ -95,7 +105,7 @@ def addBookPageToFedora(inputTiff):
     elif inputTiff.count('back_cover')==1:
         #get number of tiff files
         numberOfTiffs=0
-        dir=os.path.dirname(modsFilePath)
+        dir=os.path.dirname(inputTiff)
         for file in os.listdir(dir):
             if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff':
                 numberOfTiffs+=1
@@ -115,32 +125,47 @@ def addBookPageToFedora(inputTiff):
         return False
     
     #create the fedora book page object
-    pid = fedora.getNextPID(u'uofm')
-    myLabel=u('Page'+str(pageNumber))
-    obj = fedora.createObject(pid, label=myLabel)
-    
-    tiffUrl=u'http://baduhenna.lib.umanitoba.ca'
-    jp2Url=u'http://baduhenna.lib.umanitoba.ca'
-    pdfUrl=u'http://baduhenna.lib.umanitoba.ca'
-    ocrUrl=u'http://baduhenna.lib.umanitoba.ca'
+    #pagePid = fedora.getNextPID(u'uofm')
+    pagePid = fedora.getNextPID(u'Awill')
+    myLabel=unicode('Page'+str(pageNumber))
+    obj = fedora.createObject(pagePid, label=myLabel)
+    #create ingest urls
+    tifDir=os.path.basename(os.path.dirname(inputTiff))
+    tiffName=os.path.basename(inputTiff)
+    if tiffName[(len(tiffName)-4):len(tiffName)]=='.tif':
+        tiffNameNoExt=tiffName[(len(tiffName)-4):len(tiffName)]
+    if tiffName[(len(tiffName)-5):len(tiffName)]=='.tiff':
+        tiffNameNoExt=tiffName[(len(tiffName)-4):len(tiffName)]
+        
+    baseUrl='http://baduhenna.lib.umanitoba.ca/ingest/'+tifDir+'/'+tiffNameNoExt
+    tiffUrl=unicode(baseUrl+'.tif')
+    jp2Url=unicode(baseUrl+'.jp2')
+    pdfUrl=unicode(baseUrl+'.pdf')
+    ocrUrl=unicode(baseUrl+'.txt')
     
     #tiff datastream
-    obj.addDataStream('TIFF', tiffUrl, label=u'TIFF',
+    obj.addDataStream(u'TIFF', tiffUrl, label=u'TIFF',
                  mimeType=u'image/tiff', controlGroup=u'M',
                  logMessage=u'Added the archival tiff file.')
     #jp2 datastream
-    obj.addDataStream('JP2',jp2URL, label=u'JP2',
+    obj.addDataStream(u'JP2',jp2Url, label=u'JP2',
                  mimeType=u'image/jp2', controlGroup=u'M',
                  logMessage=u'Added jp2 image file.')
     #pdf datastream
-    obj.addDataStream('PDF', pdfUrl, label=u'PDF',
+    obj.addDataStream(u'PDF', pdfUrl, label=u'PDF',
                  mimeType=u'application/pdf', controlGroup=u'M',
                  logMessage=u'Added pdf with OCR.')
     #ocr datastream
-    obj.addDataStream('OCR', ocrUrl, label=u'OCR',
+    obj.addDataStream(u'OCR', ocrUrl, label=u'OCR',
                  mimeType=u'text/plain', controlGroup=u'M',
                  logMessage=u'Added basic text of OCR.')
     
+    objRelsExt=fedora_relationships.rels_ext(obj,[fedora_relationships.rels_namespace('pageNS','info:islandora/islandora-system:def/pageinfo#'),
+                                                                                    fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#')])
+    objRelsExt.addRelationship('isMemberOf','uofm:'+tifDir)
+    objRelsExt.addRelationship(fedora_relationships.rels_predicate('pageNS','isPageNumber'),str(pageNumber))
+    objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'bookCModel')
+    objRelsExt.update()
     
     return True
 '''
@@ -160,11 +185,14 @@ def resumePastOperations():
             resumeDirIn=line[0:len(line)-1]
         if count==1:
             resumeDirOut=line[0:len(line)-1]
+        if count==2:
+            bookPid=line[0:len(line)-1]
         else:
             resumeFiles.append(line[0:len(line)-1])
         count+=1
     inFile.close()
     #metadata file
+    global modsFilePath
     modsFilePath=os.path.join(resumeDirIn,'mods_book.xml')
     #remove that file so that it doesn't get used as a resume point again
     os.remove(resumeFilePath)
@@ -173,7 +201,10 @@ def resumePastOperations():
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
             converter.tif_to_jp2(os.path.join(resumeDirIn,file),resumeDirOut,'default','default')
             converter.tif_OCR(os.path.join(resumeDirIn,file),resumeDirOut,{'PDF':'default','Text':'default'})
-            #addBookPageToFedora(os.path.join(resumeDirIn,file))
+            shutil.copyfile(os.path.join(resumeDirIn,file), os.path.join(resumeDirOut,file))
+            addBookPageToFedora(os.path.join(resumeDirOut,file))
+    #remove base dir
+    shutil.rmtree(resumeDirIn)
     return True
 '''
 go through a directory performing the conversions OCR etc.
@@ -189,6 +220,7 @@ def performOpps():
             outFile=open(resumeFilePath,'w')
             outFile.write(currentDir+'\n')
             outFile.write(outDir+'\n')
+            outFile.write(bookPid+'\n')
             for fileToWrite in fileList:
                 outFile.write(fileToWrite+'\n')
             outFile.close()
@@ -199,17 +231,20 @@ def performOpps():
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
             converter.tif_to_jp2(os.path.join(currentDir,file),outDir,'default','default')
             converter.tif_OCR(os.path.join(currentDir,file),outDir,{'PDF':'default','Text':'default'})
-            #addBookPageToFedora(os.path.join(currentDir,file))
+            shutil.copyfile(os.path.join(currentDir,file), os.path.join(outDir,file))
+            addBookPageToFedora(os.path.join(outDir,file))
         #remove file that has been operated on so it will not be operated on again on a script resume
         if fileList.count(file)!=0:#fixes a bug where created files were throwing errors
             fileList.remove(file)
+    #remove base dir
+    shutil.rmtree(currentDir)
     return True
 '''
 SCRIPT RUN START HERE
 '''
 if len(sys.argv) == 2:
     sourceDir = sys.argv[1]
-    destDir=os.path.join(surceDir,'islandora')
+    destDir=os.path.join(sourceDir,'islandora')
 elif len(sys.argv) == 3:
     sourceDir = sys.argv[1]
     destDir = sys.argv[2]
@@ -281,10 +316,8 @@ for dir in sourceDirList:
                 shutil.copyfile(modsFilePath, os.path.join(outDir,'mods_book.xml'))
                 modsFilePath=os.path.join(outDir,'mods_book.xml')
                 #add book obj to fedora
-                #addBookToFedora()
-                #change the extension of the marc file so that this directory is not used again 
+                addBookToFedora()
                 fileList.remove(file)
-                os.rename(os.path.join(currentDir, file),os.path.join(currentDir,file+'.dun'))
                 break
         #if there was a marc file found file run tif=>ocr, tif=>jp2
         if MARC_Check==True:
