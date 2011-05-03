@@ -13,9 +13,8 @@ TODO: record current fedora book object on timed end so that book page ingestion
 '''
 from islandoraUtils import converter
 from islandoraUtils import fedora_relationships
-from lxml import etree
 import logging, sys, os, time, subprocess, ConfigParser, shutil
-from fcrepo.connection import Connection
+from fcrepo.connection import Connection, FedoraConnectionException
 from fcrepo.client import FedoraClient 
 
 '''
@@ -33,8 +32,13 @@ def startFcrepo():
     connection = Connection(url,
                     username=myUserName,
                      password=myPassword)
-    global fedora 
-    fedora=FedoraClient(connection)
+    
+    global fedora
+    try:
+        fedora=FedoraClient(connection)
+    except FedoraConnectionException:
+        logging.error('Error connecting to fedora, exiting'+'\n')
+        sys.exit()
     return True
 
 '''
@@ -44,29 +48,24 @@ Helper function that handles creating the book collection obj in fedora
 @return bool: true on function success false on fail
 '''
 def addBookToFedora():
-    #xml file
-    '''
-    parser = etree.XMLParser(remove_blank_text=True)
-    xmlFile = etree.parse(modsFilePath, parser)
-    xmlFileRoot = xmlFile.getroot()
-    '''
-    #if there is no book create a book
-    '''#a try catch that trys to get the pid and creates it if it doesn't exist... but how to deal with collisions?... move to only test once... when mods file created
-    if pid 'uofm:'+os.path.dirname(modsFilePath)
-    '''
 #create the fedora book page object
     global bookPid#global for write to file and use
-    #bookPid = fedora.getNextPID(u'uofm')
-    bookPid = fedora.getNextPID(u'Awill')
+    bookPid = fedora.getNextPID(u'uofm')
     myLabel=unicode(os.path.basename(os.path.dirname(modsFilePath)))
     obj = fedora.createObject(bookPid, label=myLabel)
+    modsUrl=open(modsFilePath)
+    garbage=u'smelly'
     
-    modsUrl='http://baduhenna.lib.umanitoba.ca/ingest/'+os.path.basename(os.path.dirname(modsFilePath)+'/mods_book.xml')
-    modsUrl=unicode(modsUrl)
-    '''obj.addDataStream(u'MODS', modsUrl, label=u'MODS',
-             mimeType=u'text/xml', controlGroup=u'X',
-             logMessage=u'Added basic mods meta data.')
-    '''
+    try:
+        obj.addDataStream(u'MODS', garbage, label=u'MODS',
+         mimeType=u'text/xml', controlGroup=u'X',
+         logMessage=u'Added basic mods meta data.')
+        logging.info('Added MODS datastream to:'+bookPid)
+        ds=obj['MODS']
+        ds.setContent(modsUrl)
+    except FedoraConnectionException:
+        logging.error('Error in adding MODS datastream to:'+bookPid+'\n')
+    
     objRelsExt=fedora_relationships.rels_ext(obj,fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#'))
     objRelsExt.addRelationship('isMemberOf','islandora:top')
     objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'bookCModel')
@@ -81,28 +80,24 @@ do i need something separate to add a book collection boj?
 
 @return bool: true on function success false on fail
 '''
-def addBookPageToFedora(inputTiff):
-    #xml file
-    parser = etree.XMLParser(remove_blank_text=True)
-    xmlFile = etree.parse(modsFilePath, parser)
-    xmlFileRoot = xmlFile.getroot()
-    #if there is no book create a book
-    '''#a try catch that trys to get the pid and creates it if it doesn't exist... but how to deal with collisions?... move to only test once... when mods file created
-    if pid 'uofm:'+os.path.dirname(modsFilePath)
-    '''
+def addBookPageToFedora(inputTiff):    
+    #determine page number    #useful for naming
+    fullTiffDur=os.path.dirname(inputTiff)
+    tifDir=os.path.basename(fullTiffDur)
+    tiffName=os.path.basename(inputTiff)
     
-    #determine page number
-    pageNumber=int(inputTiff[0:inputTiff.index('_')])
+    pageNumber=os.path.basename(inputTiff)
+    pageNumber=int(pageNumber[0:pageNumber.index('_')])
     #if front cover
-    if inputTiff.count('front_cover')==1:
+    if tiffName.count('front_cover')==1:
         pageNumber=1
-    elif inputTiff.count('inner_cover')==1:
+    elif tiffName.count('inner_cover')==1:
         pageNumber=2
     #if it's the inner leaf
-    elif inputTiff.count('inner_leaf')==1:
+    elif tiffName.count('inner_leaf')==1:
         pageNumber=3
     #if back cover
-    elif inputTiff.count('back_cover')==1:
+    elif tiffName.count('back_cover')==1:
         #get number of tiff files
         numberOfTiffs=0
         dir=os.path.dirname(inputTiff)
@@ -111,54 +106,82 @@ def addBookPageToFedora(inputTiff):
                 numberOfTiffs+=1
         pageNumber=numberOfTiffs
     #standard a [left side]
-    elif inputTiff.count('a')==1:
+    elif tiffName.count('a')==1:
+        pageNumber=pageNumber*2+1
+    #standard b [right side]
+    elif tiffName.count('b')==1:
         if pageNumber==1:
             pageNumber=4
-        pageNumber=pageNumber*2+2
-    #standard b [right side]
-    elif inputTiff.count('b')==1:
-        if pageNumber==1:
-            pageNumber=5
-        pageNumber=pageNumber*2+3
+        else:
+            pageNumber=pageNumber*2+2
     else:
-        logging.error('Bad tiff file name: '+inputTiff)
+        logging.error('Bad tiff file name: '+inputTiff+' giving fileNumber: '+str(pageNumber)+'\n')
         return False
     
-    #create the fedora book page object
-    #pagePid = fedora.getNextPID(u'uofm')
-    pagePid = fedora.getNextPID(u'Awill')
-    myLabel=unicode('Page'+str(pageNumber))
-    obj = fedora.createObject(pagePid, label=myLabel)
-    #create ingest urls
-    tifDir=os.path.basename(os.path.dirname(inputTiff))
-    tiffName=os.path.basename(inputTiff)
-    if tiffName[(len(tiffName)-4):len(tiffName)]=='.tif':
-        tiffNameNoExt=tiffName[(len(tiffName)-4):len(tiffName)]
-    if tiffName[(len(tiffName)-5):len(tiffName)]=='.tiff':
-        tiffNameNoExt=tiffName[(len(tiffName)-4):len(tiffName)]
-        
-    baseUrl='http://baduhenna.lib.umanitoba.ca/ingest/'+tifDir+'/'+tiffNameNoExt
-    tiffUrl=unicode(baseUrl+'.tif')
-    jp2Url=unicode(baseUrl+'.jp2')
-    pdfUrl=unicode(baseUrl+'.pdf')
-    ocrUrl=unicode(baseUrl+'.txt')
+    logging.info('Working on ingest of page: '+str(pageNumber)+' with source file: '+inputTiff)    
     
+    #create the fedora book page object
+    pagePid = fedora.getNextPID(u'uofm')
+    myLabel=unicode(tifDir+'_Page'+str(pageNumber))
+    obj = fedora.createObject(pagePid, label=myLabel)
+
+    #create ingest urls
+    if tiffName[(len(tiffName)-4):len(tiffName)]=='.tif':
+        tiffNameNoExt=tiffName[0:len(tiffName)-4]
+        tifExt='.tif'
+    if tiffName[(len(tiffName)-5):len(tiffName)]=='.tiff':
+        tiffNameNoExt=tiffName[0:len(tiffName)-5]
+        tifExt='.tiff'
+    
+    baseUrl=fullTiffDur+'/'+tiffNameNoExt
+    tiffUrl=open(baseUrl+tifExt)
+    jp2Url=open(baseUrl+'.jp2')
+    pdfUrl=open(baseUrl+'.pdf')
+    ocrUrl=open(baseUrl+'.txt')
+    garbage=u'smelly'
     #tiff datastream
-    obj.addDataStream(u'TIFF', tiffUrl, label=u'TIFF',
-                 mimeType=u'image/tiff', controlGroup=u'M',
-                 logMessage=u'Added the archival tiff file.')
+    try:
+        obj.addDataStream(u'TIFF', garbage, label=u'TIFF',
+             mimeType=u'image/tiff', controlGroup=u'M',
+             logMessage=u'Added the archival tiff file.')
+        logging.info('Added TIFF datastream to:'+pagePid)
+        ds=obj['TIFF']
+        ds.setContent(tiffUrl)
+    except FedoraConnectionException:
+        logging.exception('Error in adding TIFF datastream to:'+pagePid+'\n')
+        
     #jp2 datastream
-    obj.addDataStream(u'JP2',jp2Url, label=u'JP2',
-                 mimeType=u'image/jp2', controlGroup=u'M',
-                 logMessage=u'Added jp2 image file.')
+    try:
+        obj.addDataStream(u'JP2',garbage, label=u'JP2',
+             mimeType=u'image/jp2', controlGroup=u'M',
+             logMessage=u'Added jp2 image file.')
+        logging.info('Added JP2 datastream to:'+pagePid)
+        ds=obj['JP2']
+        ds.setContent(jp2Url)
+    except FedoraConnectionException:
+        logging.exception('Error in adding JP2 datastream to:'+pagePid+'\n')
+        
     #pdf datastream
-    obj.addDataStream(u'PDF', pdfUrl, label=u'PDF',
-                 mimeType=u'application/pdf', controlGroup=u'M',
-                 logMessage=u'Added pdf with OCR.')
+    try:
+        obj.addDataStream(u'PDF', garbage, label=u'PDF',
+             mimeType=u'application/pdf', controlGroup=u'M',
+             logMessage=u'Added pdf with OCR.')
+        logging.info('Added PDF datastream to:'+pagePid)
+        ds=obj['PDF']
+        ds.setContent(pdfUrl)
+    except FedoraConnectionException:
+        logging.exception('Error in adding PDF datastream to:'+pagePid+'\n')
+        
     #ocr datastream
-    obj.addDataStream(u'OCR', ocrUrl, label=u'OCR',
-                 mimeType=u'text/plain', controlGroup=u'M',
-                 logMessage=u'Added basic text of OCR.')
+    try:
+        obj.addDataStream(u'OCR', garbage, label=u'OCR',
+             mimeType=u'text/plain', controlGroup=u'M',
+             logMessage=u'Added basic text of OCR.')
+        logging.info('Added OCR datastream to:'+pagePid)
+        ds=obj['OCR']
+        ds.setContent(ocrUrl)
+    except FedoraConnectionException:
+        logging.exception('Error in adding OCR Datastream to:'+pagePid+'\n')
     
     objRelsExt=fedora_relationships.rels_ext(obj,[fedora_relationships.rels_namespace('pageNS','info:islandora/islandora-system:def/pageinfo#'),
                                                                                     fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#')])
@@ -199,12 +222,14 @@ def resumePastOperations():
     #do that dir
     for file in resumeFiles:
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
+            logging.info('Performing operations on file:'+file)
             converter.tif_to_jp2(os.path.join(resumeDirIn,file),resumeDirOut,'default','default')
             converter.tif_OCR(os.path.join(resumeDirIn,file),resumeDirOut,{'PDF':'default','Text':'default'})
             shutil.copyfile(os.path.join(resumeDirIn,file), os.path.join(resumeDirOut,file))
             addBookPageToFedora(os.path.join(resumeDirOut,file))
     #remove base dir
     shutil.rmtree(resumeDirIn)
+    shutil.rmtree(resumeDirOut)
     return True
 '''
 go through a directory performing the conversions OCR etc.
@@ -225,10 +250,11 @@ def performOpps():
                 outFile.write(fileToWrite+'\n')
             outFile.close()
             #exit script
-            logging.warning('The injest has stopped for day time activities')
+            logging.warning('The ingest has stopped for day time activities')
             sys.exit()
 
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
+            logging.info('Performing operations on file:'+file)
             converter.tif_to_jp2(os.path.join(currentDir,file),outDir,'default','default')
             converter.tif_OCR(os.path.join(currentDir,file),outDir,{'PDF':'default','Text':'default'})
             shutil.copyfile(os.path.join(currentDir,file), os.path.join(outDir,file))
@@ -238,6 +264,7 @@ def performOpps():
             fileList.remove(file)
     #remove base dir
     shutil.rmtree(currentDir)
+    shutil.rmtree(outDir)
     return True
 '''
 SCRIPT RUN START HERE
@@ -291,7 +318,7 @@ else:
     sourceDirList = os.listdir(sourceDir)
 # for path in sourceDirList:
     for path in os.listdir(sourceDir):
-        if os.path.isdir(sourceDir + '/' + path) == False:
+        if os.path.isdir(os.path.join(sourceDir,path)) == False:
             sourceDirList.remove(path)
 #loop through those dirs
 for dir in sourceDirList:
