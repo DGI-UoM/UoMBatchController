@@ -2,26 +2,25 @@
 Created on Apr 5, 2011
 
 @author: William Panting
-@dependancies: lxml, imageLibDGPY.converter,
+@dependancies: lxml
 
 This script will read all the tif files in a dir and convert them to jp2 files
 it will also write the ocr for the tiffs [pdf and txt output]
 
-TODO: finish fedora book/book page ingest
 TODO: kill all files when done
-TODO: record current fedora book object on timed end so that book page ingestion can continue
 '''
 from islandoraUtils import converter
 from islandoraUtils import fedora_relationships
+from islandoraUtils import fileManipulator
 import logging, sys, os, time, subprocess, ConfigParser, shutil
 from fcrepo.connection import Connection, FedoraConnectionException
 from fcrepo.client import FedoraClient 
 
-'''
+
+def startFcrepo():
+    '''
 helper function that starts up the fedora connection
 '''
-def startFcrepo():
-    
     config = ConfigParser.ConfigParser()
 
     config.read(os.path.join(os.getcwd(),'UoMScripts','UoM.cfg'))
@@ -41,38 +40,71 @@ def startFcrepo():
         sys.exit()
     return True
 
+def createBookPDF(bookPath):
+    '''
+This function creates the pdf of an entire book and ingests it as a DS into fedora
+@param pagesDict: the dictionary containing as keys the page number and as values the file path
+@param bookPid:  the pid of the book object to add the pdf datastream to
+@return bool: true if added false if not 
 '''
+    #get page to
+    bookPath=os.path.join(bookPath,os.path.basename(bookPath)+'.pdf')
+    pageNum=1
+    while pageNum<=len(pagesDict):
+        pagePath=pagesDict[pageNum]
+        fileManipulator.appendPDFwithPDF(bookPath, pagePath)
+        pageNum+=1         
+    
+    #create and add pdf datastream
+    obj = fedora.getObject(bookPid)
+    bookFile=open(bookPath,'rb')
+    garbage='smelly like a sexy cow in a japanese outfit'
+    try:
+        obj.addDataStream(u'PDF', garbage, label=u'PDF',
+             mimeType=u'application/pdf', controlGroup=u'M',
+             logMessage=u'Added pdf with OCR.')
+        logging.info('Added PDF datastream to:'+bookPid)
+        ds=obj['PDF']
+        ds.setContent(bookFile)
+    except FedoraConnectionException:
+        logging.exception('Error in adding PDF datastream to:'+bookPid+'\n')
+        return False
+    return True
+
+
+def addBookToFedora():
+    '''
 Helper function that handles creating the book collection obj in fedora
 @param modsFilePath: the source of meta data
 
 @return bool: true on function success false on fail
 '''
-def addBookToFedora():
 #create the fedora book page object
     global bookPid#global for write to file and use
-    bookPid = fedora.getNextPID(u'uofm')
+    #bookPid = fedora.getNextPID(u'uofm')
+    bookPid = fedora.getNextPID(u'Awill')
     myLabel=unicode(os.path.basename(os.path.dirname(modsFilePath)))
     obj = fedora.createObject(bookPid, label=myLabel)
     modsUrl=open(modsFilePath)
-    garbage=u'smelly'
+    modsContents=modsUrl.read()
     
     try:
-        obj.addDataStream(u'MODS', garbage, label=u'MODS',
+        obj.addDataStream(u'MODS', unicode(modsContents), label=u'MODS',
          mimeType=u'text/xml', controlGroup=u'X',
          logMessage=u'Added basic mods meta data.')
         logging.info('Added MODS datastream to:'+bookPid)
-        ds=obj['MODS']
-        ds.setContent(modsUrl)
     except FedoraConnectionException:
         logging.error('Error in adding MODS datastream to:'+bookPid+'\n')
     
     objRelsExt=fedora_relationships.rels_ext(obj,fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#'))
     objRelsExt.addRelationship('isMemberOf','islandora:top')
-    objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'bookCModel')
+    objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'archiveorg:bookCModel')
     objRelsExt.update()
     
     return True
-'''
+
+def addBookPageToFedora(inputTiff):
+    '''
 Helper function that handles adding and configuring a fedora object for a book page based on the input image and mods file
 do i need something separate to add a book collection boj?
 @param inputTiff:  the archival data source
@@ -80,7 +112,6 @@ do i need something separate to add a book collection boj?
 
 @return bool: true on function success false on fail
 '''
-def addBookPageToFedora(inputTiff):    
     #determine page number    #useful for naming
     fullTiffDur=os.path.dirname(inputTiff)
     tifDir=os.path.basename(fullTiffDur)
@@ -107,21 +138,26 @@ def addBookPageToFedora(inputTiff):
         pageNumber=numberOfTiffs
     #standard a [left side]
     elif tiffName.count('a')==1:
-        pageNumber=pageNumber*2+1
-    #standard b [right side]
-    elif tiffName.count('b')==1:
         if pageNumber==1:
             pageNumber=4
         else:
             pageNumber=pageNumber*2+2
+    #standard b [right side]
+    elif tiffName.count('b')==1:
+        if pageNumber==1:
+            pageNumber=5
+        else:
+            pageNumber=pageNumber*2+3
     else:
         logging.error('Bad tiff file name: '+inputTiff+' giving fileNumber: '+str(pageNumber)+'\n')
         return False
     
     logging.info('Working on ingest of page: '+str(pageNumber)+' with source file: '+inputTiff)    
+
     
     #create the fedora book page object
-    pagePid = fedora.getNextPID(u'uofm')
+    #bookPid = fedora.getNextPID(u'uofm')
+    pagePid = fedora.getNextPID(u'Awill')
     myLabel=unicode(tifDir+'_Page'+str(pageNumber))
     obj = fedora.createObject(pagePid, label=myLabel)
 
@@ -138,6 +174,12 @@ def addBookPageToFedora(inputTiff):
     jp2Url=open(baseUrl+'.jp2')
     pdfUrl=open(baseUrl+'.pdf')
     ocrUrl=open(baseUrl+'.txt')
+    
+    #this is used for creating the book pdf later
+    global pagesDict
+    pagesDict[pageNumber]=baseUrl+'.pdf'
+    
+    
     garbage=u'smelly'
     #tiff datastream
     try:
@@ -184,17 +226,18 @@ def addBookPageToFedora(inputTiff):
         logging.exception('Error in adding OCR Datastream to:'+pagePid+'\n')
     
     objRelsExt=fedora_relationships.rels_ext(obj,[fedora_relationships.rels_namespace('pageNS','info:islandora/islandora-system:def/pageinfo#'),
-                                                                                    fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#')])
-    objRelsExt.addRelationship('isMemberOf','uofm:'+tifDir)
-    objRelsExt.addRelationship(fedora_relationships.rels_predicate('pageNS','isPageNumber'),str(pageNumber))
-    objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'bookCModel')
+                                                  fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#')])
+    objRelsExt.addRelationship('isMemberOf',bookPid)
+    objRelsExt.addRelationship(fedora_relationships.rels_predicate('pageNS','isPageNumber'),fedora_relationships.rels_object(str(pageNumber),fedora_relationships.rels_object.LITERAL))
+    objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'archiveorg:pageCModel')
     objRelsExt.update()
     
     return True
-'''
+
+def resumePastOperations():
+    '''
 Helper function that will finish off the directory that was being worked on during the last run of the script [if there was one]
 '''
-def resumePastOperations():
     #init some necessary values
     inFile=open(resumeFilePath,'r')
     resumeDirIn=''
@@ -209,7 +252,12 @@ def resumePastOperations():
         if count==1:
             resumeDirOut=line[0:len(line)-1]
         if count==2:
+            global bookPid
             bookPid=line[0:len(line)-1]
+        if count==3:
+            global pagesDict
+            #eval will let the read in string be treated as inline code to create the dict
+            pagesDict=eval(line[0:len(line)-1])
         else:
             resumeFiles.append(line[0:len(line)-1])
         count+=1
@@ -228,13 +276,15 @@ def resumePastOperations():
             shutil.copyfile(os.path.join(resumeDirIn,file), os.path.join(resumeDirOut,file))
             addBookPageToFedora(os.path.join(resumeDirOut,file))
     #remove base dir
+    createBookPDF(resumeDirOut)
     shutil.rmtree(resumeDirIn)
     shutil.rmtree(resumeDirOut)
     return True
-'''
+
+def performOpps():
+    '''
 go through a directory performing the conversions OCR etc.
 '''
-def performOpps():
     logging.info('MARC file found performing operations.')
     for file in os.listdir(currentDir):
         
@@ -246,6 +296,7 @@ def performOpps():
             outFile.write(currentDir+'\n')
             outFile.write(outDir+'\n')
             outFile.write(bookPid+'\n')
+            outFile.write(str(pagesDict)+'\n')
             for fileToWrite in fileList:
                 outFile.write(fileToWrite+'\n')
             outFile.close()
@@ -263,6 +314,7 @@ def performOpps():
         if fileList.count(file)!=0:#fixes a bug where created files were throwing errors
             fileList.remove(file)
     #remove base dir
+    createBookPDF(outDir)
     shutil.rmtree(currentDir)
     shutil.rmtree(outDir)
     return True
@@ -279,6 +331,9 @@ else:
     print('Please verify source and/or destination directory.')
     sys.exit(-1)
     
+#declaration of a dictionary to avoid conditional declaration and syntax ambiguity in assignment/creation
+pagesDict={}
+sourceDirList = ()#list of directories to be operated on
 
 #add cli,imageMagick to the path and hope for the best
 os.environ['PATH']=os.environ["PATH"]+':/usr/local/ABBYY/FREngine-Linux-i686-9.0.0.126675/Samples/Samples/CommandLineInterface'
@@ -293,8 +348,6 @@ logFile=os.path.join(logDir,'UoM_Batch_Controller'+time.strftime('%y_%m_%d')+'.l
 resumeFilePath=os.path.join(logDir,'BatchControllerState.log')
 logging.basicConfig(filename=logFile,level=logging.DEBUG)
 
-#set cwd 
-#os.chdir(MYDIR!!!)
 #perl script location
 marc2mods=os.path.join(os.getcwd(),'UoMScripts','marc2mods.pl')
 #config file location
@@ -307,7 +360,6 @@ startFcrepo()
 #handle a resume of operations if necessary
 if os.path.isfile(resumeFilePath):
     resumePastOperations()
-sourceDirList = ()#list of directories to be operated on
 
 #check and see if source dir is a directory
 if os.path.isdir(sourceDir) == False:
