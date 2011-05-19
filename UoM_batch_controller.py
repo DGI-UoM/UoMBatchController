@@ -7,7 +7,8 @@ Created on Apr 5, 2011
 This script will read all the tif files in a dir and convert them to jp2 files
 it will also write the ocr for the tiffs [pdf and txt output]
 
-TODO: kill all files when done
+TODO: add tn datastream to book
+TODO: might have to do something about adding to solr
 '''
 from islandoraUtils import converter
 from islandoraUtils import fedora_relationships
@@ -90,12 +91,28 @@ Helper function that handles creating the book collection obj in fedora
     
     try:
         obj.addDataStream(u'MODS', unicode(modsContents), label=u'MODS',
-         mimeType=u'text/xml', controlGroup=u'X',
-         logMessage=u'Added basic mods meta data.')
+        mimeType=u'text/xml', controlGroup=u'X',
+        logMessage=u'Added basic mods meta data.')
         logging.info('Added MODS datastream to:'+bookPid)
     except FedoraConnectionException:
         logging.error('Error in adding MODS datastream to:'+bookPid+'\n')
+        
+    #add a TN datastream to the object after creating it from the book cover
+    tnPath=os.path.join(os.path.dirname(modsFilePath),(myLabel+'_TN.jpg'))
+    converter.tif_to_jpg(os.path.join(os.path.dirname(modsFilePath),'0001_a_front_cover.tif'), tnPath,'TN')
+    tnUrl=open(tnPath)
     
+    try:
+        obj.addDataStream(u'TN', u'aTmpStr', label=u'TN',
+        mimeType=u'image/jpeg', controlGroup=u'M',
+        logMessage=u'Added a jpeg thumbnail.')
+        logging.info('Added TN datastream to:'+bookPid)
+        ds=obj['TN']
+        ds.setContent(tnUrl)
+    except FedoraConnectionException:
+        logging.error('Error in adding TN datastream to:'+bookPid+'\n')
+    
+    #configure rels ext
     objRelsExt=fedora_relationships.rels_ext(obj,fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#'))
     objRelsExt.addRelationship('isMemberOf','islandora:top')
     objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'archiveorg:bookCModel')
@@ -103,20 +120,22 @@ Helper function that handles creating the book collection obj in fedora
     
     return True
 
-def addBookPageToFedora(inputTiff):
+def addBookPageToFedora(inputTiff, tmpDir):
     '''
 Helper function that handles adding and configuring a fedora object for a book page based on the input image and mods file
 do i need something separate to add a book collection boj?
 @param inputTiff:  the archival data source
-@param modsFilePath: the source of meta data
+@param tmpDir: file directory where non-archeival stuff gets put
 
 @return bool: true on function success false on fail
 '''
+    #run conversions
+    converter.tif_to_jp2(inputTiff,tmpDir,'default','default')
+    converter.tif_OCR(inputTiff,tmpDir,{'PDF':'default','Text':'default'})
     #determine page number    #useful for naming
     fullTiffDur=os.path.dirname(inputTiff)
     tifDir=os.path.basename(fullTiffDur)
     tiffName=os.path.basename(inputTiff)
-    
     pageNumber=os.path.basename(inputTiff)
     pageNumber=int(pageNumber[0:pageNumber.index('_')])
     #if front cover
@@ -156,7 +175,7 @@ do i need something separate to add a book collection boj?
 
     
     #create the fedora book page object
-    #bookPid = fedora.getNextPID(u'uofm')
+    #pagePid = fedora.getNextPID(u'uofm')
     pagePid = fedora.getNextPID(u'Awill')
     myLabel=unicode(tifDir+'_Page'+str(pageNumber))
     obj = fedora.createObject(pagePid, label=myLabel)
@@ -169,15 +188,17 @@ do i need something separate to add a book collection boj?
         tiffNameNoExt=tiffName[0:len(tiffName)-5]
         tifExt='.tiff'
     
-    baseUrl=fullTiffDur+'/'+tiffNameNoExt
-    tiffUrl=open(baseUrl+tifExt)
-    jp2Url=open(baseUrl+'.jp2')
-    pdfUrl=open(baseUrl+'.pdf')
-    ocrUrl=open(baseUrl+'.txt')
-    
+    baseInUrl=os.path.join(fullTiffDur,tiffNameNoExt)
+    baseOutUrl=os.path.join(tmpDir,tiffNameNoExt)
+    tiffUrl=open(baseInUrl+tifExt)
+    jp2Url=open(baseOutUrl+'.jp2')
+    pdfUrl=open(baseOutUrl+'.pdf')
+    ocrUrl=open(baseOutUrl+'.txt')
+    nefUrl=open(baseInUrl+'.nef')
+    dngUrl=open(baseInUrl+'.dng')
     #this is used for creating the book pdf later
     global pagesDict
-    pagesDict[pageNumber]=baseUrl+'.pdf'
+    pagesDict[pageNumber]=baseOutUrl+'.pdf'
     
     
     garbage=u'smelly'
@@ -191,7 +212,7 @@ do i need something separate to add a book collection boj?
         ds.setContent(tiffUrl)
     except FedoraConnectionException:
         logging.exception('Error in adding TIFF datastream to:'+pagePid+'\n')
-        
+  
     #jp2 datastream
     try:
         obj.addDataStream(u'JP2',garbage, label=u'JP2',
@@ -202,6 +223,7 @@ do i need something separate to add a book collection boj?
         ds.setContent(jp2Url)
     except FedoraConnectionException:
         logging.exception('Error in adding JP2 datastream to:'+pagePid+'\n')
+        
         
     #pdf datastream
     try:
@@ -214,6 +236,7 @@ do i need something separate to add a book collection boj?
     except FedoraConnectionException:
         logging.exception('Error in adding PDF datastream to:'+pagePid+'\n')
         
+        
     #ocr datastream
     try:
         obj.addDataStream(u'OCR', garbage, label=u'OCR',
@@ -224,7 +247,31 @@ do i need something separate to add a book collection boj?
         ds.setContent(ocrUrl)
     except FedoraConnectionException:
         logging.exception('Error in adding OCR Datastream to:'+pagePid+'\n')
-    
+        
+        
+        #nef datastream
+    try:
+        obj.addDataStream(u'NEF', garbage, label=u'NEF',
+             mimeType=u'image/x-nikon-nef', controlGroup=u'M',
+             logMessage=u'Added the archival nef file.')
+        logging.info('Added NEF datastream to:'+pagePid)
+        ds=obj['NEF']
+        ds.setContent(nefUrl)
+    except FedoraConnectionException:
+        logging.exception('Error in adding NEF datastream to:'+pagePid+'\n')
+        
+        
+        #dng datastream
+    try:
+        obj.addDataStream(u'DNG', garbage, label=u'DNG',
+             mimeType=u'image/x-adobe-dng', controlGroup=u'M',
+             logMessage=u'Added the archival dng file.')
+        logging.info('Added DNG datastream to:'+pagePid)
+        ds=obj['DNG']
+        ds.setContent(dngUrl)
+    except FedoraConnectionException:
+        logging.exception('Error in adding DNG datastream to:'+pagePid+'\n')
+
     objRelsExt=fedora_relationships.rels_ext(obj,[fedora_relationships.rels_namespace('pageNS','info:islandora/islandora-system:def/pageinfo#'),
                                                   fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#')])
     objRelsExt.addRelationship('isMemberOf',bookPid)
@@ -271,10 +318,10 @@ Helper function that will finish off the directory that was being worked on duri
     for file in resumeFiles:
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
             logging.info('Performing operations on file:'+file)
-            converter.tif_to_jp2(os.path.join(resumeDirIn,file),resumeDirOut,'default','default')
-            converter.tif_OCR(os.path.join(resumeDirIn,file),resumeDirOut,{'PDF':'default','Text':'default'})
-            shutil.copyfile(os.path.join(resumeDirIn,file), os.path.join(resumeDirOut,file))
-            addBookPageToFedora(os.path.join(resumeDirOut,file))
+            #converter.tif_to_jp2(os.path.join(resumeDirIn,file),resumeDirOut,'default','default')
+            #converter.tif_OCR(os.path.join(resumeDirIn,file),resumeDirOut,{'PDF':'default','Text':'default'})
+            #shutil.copyfile(os.path.join(resumeDirIn,file), os.path.join(resumeDirOut,file))
+            addBookPageToFedora(os.path.join(resumeDirIn,file), resumeDirOut)
     #remove base dir
     createBookPDF(resumeDirOut)
     shutil.rmtree(resumeDirIn)
@@ -306,10 +353,10 @@ go through a directory performing the conversions OCR etc.
 
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
             logging.info('Performing operations on file:'+file)
-            converter.tif_to_jp2(os.path.join(currentDir,file),outDir,'default','default')
-            converter.tif_OCR(os.path.join(currentDir,file),outDir,{'PDF':'default','Text':'default'})
-            shutil.copyfile(os.path.join(currentDir,file), os.path.join(outDir,file))
-            addBookPageToFedora(os.path.join(outDir,file))
+            #converter.tif_to_jp2(os.path.join(currentDir,file),outDir,'default','default')
+            #converter.tif_OCR(os.path.join(currentDir,file),outDir,{'PDF':'default','Text':'default'})
+            #shutil.copyfile(os.path.join(currentDir,file), os.path.join(outDir,file))
+            addBookPageToFedora(os.path.join(currentDir,file), outDir)
         #remove file that has been operated on so it will not be operated on again on a script resume
         if fileList.count(file)!=0:#fixes a bug where created files were throwing errors
             fileList.remove(file)
@@ -392,8 +439,8 @@ for dir in sourceDirList:
                 perlCall=['perl',marc2mods,os.path.join(currentDir,file)]
                 subprocess.call(perlCall)
                 modsFilePath=os.path.join(currentDir,'mods_book.xml')
-                shutil.copyfile(modsFilePath, os.path.join(outDir,'mods_book.xml'))
-                modsFilePath=os.path.join(outDir,'mods_book.xml')
+                #shutil.copyfile(modsFilePath, os.path.join(outDir,'mods_book.xml'))
+                #modsFilePath=os.path.join(outDir,'mods_book.xml')
                 #add book obj to fedora
                 addBookToFedora()
                 fileList.remove(file)
