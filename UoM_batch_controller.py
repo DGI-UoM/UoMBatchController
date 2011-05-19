@@ -7,7 +7,6 @@ Created on Apr 5, 2011
 This script will read all the tif files in a dir and convert them to jp2 files
 it will also write the ocr for the tiffs [pdf and txt output]
 
-TODO: add tn datastream to book
 TODO: might have to do something about adding to solr
 '''
 from islandoraUtils import converter
@@ -132,7 +131,8 @@ do i need something separate to add a book collection boj?
     #run conversions
     converter.tif_to_jp2(inputTiff,tmpDir,'default','default')
     converter.tif_OCR(inputTiff,tmpDir,{'PDF':'default','Text':'default'})
-    #determine page number    #useful for naming
+    
+    #determine page number: used for naming
     fullTiffDur=os.path.dirname(inputTiff)
     tifDir=os.path.basename(fullTiffDur)
     tiffName=os.path.basename(inputTiff)
@@ -196,6 +196,7 @@ do i need something separate to add a book collection boj?
     ocrUrl=open(baseOutUrl+'.txt')
     nefUrl=open(baseInUrl+'.nef')
     dngUrl=open(baseInUrl+'.dng')
+    
     #this is used for creating the book pdf later
     global pagesDict
     pagesDict[pageNumber]=baseOutUrl+'.pdf'
@@ -318,9 +319,6 @@ Helper function that will finish off the directory that was being worked on duri
     for file in resumeFiles:
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
             logging.info('Performing operations on file:'+file)
-            #converter.tif_to_jp2(os.path.join(resumeDirIn,file),resumeDirOut,'default','default')
-            #converter.tif_OCR(os.path.join(resumeDirIn,file),resumeDirOut,{'PDF':'default','Text':'default'})
-            #shutil.copyfile(os.path.join(resumeDirIn,file), os.path.join(resumeDirOut,file))
             addBookPageToFedora(os.path.join(resumeDirIn,file), resumeDirOut)
     #remove base dir
     createBookPDF(resumeDirOut)
@@ -353,9 +351,6 @@ go through a directory performing the conversions OCR etc.
 
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
             logging.info('Performing operations on file:'+file)
-            #converter.tif_to_jp2(os.path.join(currentDir,file),outDir,'default','default')
-            #converter.tif_OCR(os.path.join(currentDir,file),outDir,{'PDF':'default','Text':'default'})
-            #shutil.copyfile(os.path.join(currentDir,file), os.path.join(outDir,file))
             addBookPageToFedora(os.path.join(currentDir,file), outDir)
         #remove file that has been operated on so it will not be operated on again on a script resume
         if fileList.count(file)!=0:#fixes a bug where created files were throwing errors
@@ -439,8 +434,6 @@ for dir in sourceDirList:
                 perlCall=['perl',marc2mods,os.path.join(currentDir,file)]
                 subprocess.call(perlCall)
                 modsFilePath=os.path.join(currentDir,'mods_book.xml')
-                #shutil.copyfile(modsFilePath, os.path.join(outDir,'mods_book.xml'))
-                #modsFilePath=os.path.join(outDir,'mods_book.xml')
                 #add book obj to fedora
                 addBookToFedora()
                 fileList.remove(file)
