@@ -196,12 +196,16 @@ do i need something separate to add a book collection boj?
     ocrUrl=open(baseOutUrl+'.txt')
     nefUrl=open(baseInUrl+'.nef')
     dngUrl=open(baseInUrl+'.dng')
-    
+    #this gets the metadata for the page from the tif
+    exifPath=baseOutUrl+'.xml'
+    converter.exif_to_xml(inputTiff,exifPath)
+    exifUrl= open(exifPath)
+        
     #this is used for creating the book pdf later
     global pagesDict
     pagesDict[pageNumber]=baseOutUrl+'.pdf'
     
-    
+
     garbage=u'smelly'
     #tiff datastream
     try:
@@ -272,6 +276,17 @@ do i need something separate to add a book collection boj?
         ds.setContent(dngUrl)
     except FedoraConnectionException:
         logging.exception('Error in adding DNG datastream to:'+pagePid+'\n')
+        
+    #exif datastream
+    try:
+        obj.addDataStream(u'EXIF', garbage, label=u'EXIF',
+             mimeType=u'text/xml', controlGroup=u'M',
+             logMessage=u'Added the archival EXIF file.')
+        logging.info('Added EXIF datastream to:'+pagePid)
+        ds=obj['EXIF']
+        ds.setContent(exifUrl)
+    except FedoraConnectionException:
+        logging.exception('Error in adding EXIF datastream to:'+pagePid+'\n')
 
     objRelsExt=fedora_relationships.rels_ext(obj,[fedora_relationships.rels_namespace('pageNS','info:islandora/islandora-system:def/pageinfo#'),
                                                   fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#')])
@@ -377,9 +392,10 @@ else:
 pagesDict={}
 sourceDirList = ()#list of directories to be operated on
 
-#add cli,imageMagick to the path and hope for the best
+#add cli,imageMagick to the path and hope for the best [remoove these on production server]
 os.environ['PATH']=os.environ["PATH"]+':/usr/local/ABBYY/FREngine-Linux-i686-9.0.0.126675/Samples/Samples/CommandLineInterface'
 os.environ['PATH']=os.environ["PATH"]+':/usr/local/Linux-x86-64'
+os.environ['PATH']=os.environ["PATH"]+':/usr/tmpDL/UoM/src/UoMScripts/Exif'
 
 #configure logging
 logDir=os.path.join(sourceDir,'logs')
@@ -392,6 +408,7 @@ logging.basicConfig(filename=logFile,level=logging.DEBUG)
 
 #perl script location
 marc2mods=os.path.join(os.getcwd(),'UoMScripts','marc2mods.pl')
+
 #config file location
 #if the destination directory doesn't exist create it
 if os.path.isdir(destDir)==False:
