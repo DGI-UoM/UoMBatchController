@@ -8,6 +8,8 @@
 
 use File::Copy;
 use MARC::Batch;
+use HTML::Entities;
+use Encode;
 
 my $batch = MARC::Batch->new('USMARC', $ARGV[0]);
 $batch->strict_off();
@@ -26,10 +28,10 @@ while (my $record = $batch->next()) {
       print modfile
             "\t<mods:titleInfo>\n" .
             "\t\t<mods:title>" .
-            $field245a .
+            encode_entities(decode("UTF-8",$field245a)) .
             "</mods:title>\n" .
             "\t\t<mods:subTitle>" .
-            $field245b .
+            encode_entities(decode("UTF-8",$field245b)) .
             "</mods:subTitle>\n" .
             "\t</mods:titleInfo>\n";
 
@@ -43,15 +45,15 @@ while (my $record = $batch->next()) {
         print modfile
               "\t<mods:name authority=\"naf\" type=\"personal\">\n" .
               "\t\t<mods:namePart type=\"family\">" .
-              $surname .
+              encode_entities(decode("UTF-8",$surname)) .
               "</mods:namePart>\n";
         print modfile
               "\t\t<mods:namePart type=\"given\">" .
-              $firstname .
+              encode_entities(decode("UTF-8",$firstname)) .
               "</mods:namePart>\n";
         print modfile
               "\t\t<mods:namePart type=\"date\">" .
-              $field700d .
+              encode_entities(decode("UTF-8",$field700d)) .
               "</mods:namePart>\n" .
               "\t</mods:name>\n";
       }
@@ -64,14 +66,14 @@ while (my $record = $batch->next()) {
             "\t<mods:originInfo>\n" .
             "\t\t<mods:place>\n" .
             "\t\t\t<mods:placeTerm type=\"text\">" .
-            $field260a .
+            encode_entities(decode("UTF-8",$field260a)) .
             "</mods:placeTerm>\n" .
             "\t\t</mods:place>\n" .
             "\t\t<mods:publisher>" .
-            $field260b .
+            encode_entities(decode("UTF-8",$field260b)) .
             "</mods:publisher>\n" .
             "\t\t<mods:dateIssued>" .
-            $field260c .
+            encode_entities(decode("UTF-8",$field260c)) .
             "</mods:dateIssued>\n" .
             "\t</mods:originInfo>\n";
 
@@ -81,7 +83,7 @@ while (my $record = $batch->next()) {
       print modfile
             "\t<mods:physicalDescription>\n" .
             "\t\t<mods:extent>" .
-            $field300a . $field300c .
+            encode_entities(decode("UTF-8",$field300a)) . encode_entities(decode("UTF-8",$field300c)) .
             "</mods:extent>\n" .
             "\t</mods:physicalDescription>\n";
 
@@ -90,7 +92,7 @@ while (my $record = $batch->next()) {
       foreach my $field500 (%field500a) {
         print modfile
               "\t<mods:note>" .
-              $field500 .
+              encode_entities(decode("UTF-8",$field500)) .
               "</mods:note>\n";
       }
 
@@ -101,7 +103,7 @@ while (my $record = $batch->next()) {
 	      foreach my $field503atmp (%field503a) {
 	        print modfile
 	              "\t<mods:note>" .
-	              $field503atmp .
+	              encode_entities(decode("UTF-8",$field503atmp)) .
 	              "<\mods:note>\n";
 	      }
       }
@@ -113,7 +115,7 @@ while (my $record = $batch->next()) {
 	      foreach $field590a (%field590) {
 	        print modfile
 	              "\t<mods:note>" .
-	              $field590a .
+	              encode_entities(decode("UTF-8",$field590a)) .
 	              "</mods:note>\n";
 	      }
       }
@@ -128,7 +130,7 @@ while (my $record = $batch->next()) {
       print modfile
             "\t<mods:recordInfo>\n" .
             "\t\t<mods:recordIdentifier>" .
-            $field001->as_string() .
+            encode_entities(decode("UTF-8",$field001->as_string())) .
             "</mods:recordIdentifier>\n";
 
       # 040 field - <recordContentSource>,<languageofCataloging>
@@ -136,11 +138,11 @@ while (my $record = $batch->next()) {
       my $field040b = $record->field('040')->subfield('b');
       print modfile
             "\t\t<mods:recordContentSource>" .
-            $field040a .
+            encode_entities(decode("UTF-8",$field040a)) .
             "</mods:recordContentSource>\n";
       print modfile
             "\t\t<mods:languageofCataloging>" .
-            $field040b .
+            encode_entities(decode("UTF-8",$field040b)) .
             "</mods:languageofCataloging>\n" .
             "\t</mods:recordInfo>\n";
 

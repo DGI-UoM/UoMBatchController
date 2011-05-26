@@ -7,7 +7,8 @@ Created on Apr 5, 2011
 This script will read all the tif files in a dir and convert them to jp2 files
 it will also write the ocr for the tiffs [pdf and txt output]
 
-TODO: might have to do something about adding to solr
+TODO: add the pid to mods
+TODO: send the mods to solr
 '''
 from islandoraUtils import converter
 from islandoraUtils import fedora_relationships
@@ -15,22 +16,33 @@ from islandoraUtils import fileManipulator
 import logging, sys, os, time, subprocess, ConfigParser, shutil
 from fcrepo.connection import Connection, FedoraConnectionException
 from fcrepo.client import FedoraClient 
+from lxml import etree
 
 
+def getConfig():
+    '''
+    This funciton get all the configuration values for use by the script
+    '''
+    config = ConfigParser.ConfigParser()
+    config.read(os.path.join(os.getcwd(),'UoMScripts','UoM.cfg'))
+    global fedoraUrl
+    global fedoraUserName
+    global fedoraPassword
+    global solrUrl
+    solrUrl=config.get('Solr','url')
+    fedoraUrl=config.get('Fedora','url')
+    fedoraUserName=config.get('Fedora', 'username')
+    fedoraPassword=config.get('Fedora','password')
+    
+    
+    return True
 def startFcrepo():
     '''
 helper function that starts up the fedora connection
 '''
-    config = ConfigParser.ConfigParser()
-
-    config.read(os.path.join(os.getcwd(),'UoMScripts','UoM.cfg'))
-    
-    url=config.get('Fedora','url')
-    myUserName=config.get('Fedora', 'username')
-    myPassword=config.get('Fedora','password')
-    connection = Connection(url,
-                    username=myUserName,
-                     password=myPassword)
+    connection = Connection(fedoraUrl,
+                    username=fedoraUserName,
+                     password=fedoraPassword)
     
     global fedora
     try:
@@ -85,9 +97,20 @@ Helper function that handles creating the book collection obj in fedora
     bookPid = fedora.getNextPID(u'Awill')
     myLabel=unicode(os.path.basename(os.path.dirname(modsFilePath)))
     obj = fedora.createObject(bookPid, label=myLabel)
+   
+    #add the book pid to modsFile
+    parser = etree.XMLParser(remove_blank_text=True)
+    xmlFile = etree.parse(modsFilePath, parser)
+    xmlFileRoot = xmlFile.getroot()
+    modsElem=etree.Element("{http://www.loc.gov/mods/v3}identifier",type="pid")
+    modsElem.text=bookPid
+    xmlFileRoot.append(modsElem)
+    xmlFile.write(modsFilePath)
+    
+    #add mods datastream
     modsUrl=open(modsFilePath)
     modsContents=modsUrl.read()
-    
+    modsUrl.close()
     try:
         obj.addDataStream(u'MODS', unicode(modsContents), label=u'MODS',
         mimeType=u'text/xml', controlGroup=u'X',
@@ -117,6 +140,8 @@ Helper function that handles creating the book collection obj in fedora
     objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'archiveorg:bookCModel')
     objRelsExt.update()
     
+    #index the book in solr
+    sendSolr()
     return True
 
 def addBookPageToFedora(inputTiff, tmpDir):
@@ -375,6 +400,24 @@ go through a directory performing the conversions OCR etc.
     shutil.rmtree(currentDir)
     shutil.rmtree(outDir)
     return True
+
+def sendSolr():
+    '''
+    This is a helper function that creates and sends information to solr for ingest
+    '''
+    
+    solrFile=os.path.join(os.path.dirname(modsFilePath),'mods_book_solr.xml')
+    converter.mods_to_solr(modsFilePath, solrFile)
+    solrFileHandle=open(solrFile,'r')
+    solrFileContent=solrFileHandle.read()
+    solrFileContent=solrFileContent[solrFileContent.index('\n'):len(solrFileContent)]
+    curlCall='curl '+solrUrl+'/update'+r" -H 'Content-Type: text/xml' --data-binary '"+solrFileContent+r"'"
+    print(curlCall)
+    r = subprocess.call(curlCall, shell=True)
+    if r!=0:
+        logging.error('Trouble currling with Solr power. Curl returned code: '+str(r))
+    solrFileHandle.close()
+    return True
 '''
 SCRIPT RUN START HERE
 '''
@@ -414,6 +457,7 @@ marc2mods=os.path.join(os.getcwd(),'UoMScripts','marc2mods.pl')
 if os.path.isdir(destDir)==False:
     os.mkdir(destDir)
 #start up fedora connection
+getConfig()
 startFcrepo()
 
 #handle a resume of operations if necessary
