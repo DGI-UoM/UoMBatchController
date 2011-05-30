@@ -7,12 +7,12 @@ Created on Apr 5, 2011
 This script will read all the tif files in a dir and convert them to jp2 files
 it will also write the ocr for the tiffs [pdf and txt output]
 
-TODO: add the pid to mods
-TODO: send the mods to solr
+TODO: email integration:waiting on server
 '''
 from islandoraUtils import converter
 from islandoraUtils import fedora_relationships
 from islandoraUtils import fileManipulator
+from islandoraUtils import misc
 import logging, sys, os, time, subprocess, ConfigParser, shutil
 from fcrepo.connection import Connection, FedoraConnectionException
 from fcrepo.client import FedoraClient 
@@ -70,7 +70,7 @@ This function creates the pdf of an entire book and ingests it as a DS into fedo
     #create and add pdf datastream
     obj = fedora.getObject(bookPid)
     bookFile=open(bookPath,'rb')
-    garbage='smelly like a sexy cow in a japanese outfit'
+    garbage='smelly'
     try:
         obj.addDataStream(u'PDF', garbage, label=u'PDF',
              mimeType=u'application/pdf', controlGroup=u'M',
@@ -158,8 +158,8 @@ do i need something separate to add a book collection boj?
     converter.tif_OCR(inputTiff,tmpDir,{'PDF':'default','Text':'default'})
     
     #determine page number: used for naming
-    fullTiffDur=os.path.dirname(inputTiff)
-    tifDir=os.path.basename(fullTiffDur)
+    fullTiffDir=os.path.dirname(inputTiff)
+    tifDir=os.path.basename(fullTiffDir)
     tiffName=os.path.basename(inputTiff)
     pageNumber=os.path.basename(inputTiff)
     pageNumber=int(pageNumber[0:pageNumber.index('_')])
@@ -213,14 +213,12 @@ do i need something separate to add a book collection boj?
         tiffNameNoExt=tiffName[0:len(tiffName)-5]
         tifExt='.tiff'
     
-    baseInUrl=os.path.join(fullTiffDur,tiffNameNoExt)
+    baseInUrl=os.path.join(fullTiffDir,tiffNameNoExt)
     baseOutUrl=os.path.join(tmpDir,tiffNameNoExt)
     tiffUrl=open(baseInUrl+tifExt)
     jp2Url=open(baseOutUrl+'.jp2')
     pdfUrl=open(baseOutUrl+'.pdf')
     ocrUrl=open(baseOutUrl+'.txt')
-    nefUrl=open(baseInUrl+'.nef')
-    dngUrl=open(baseInUrl+'.dng')
     #this gets the metadata for the page from the tif
     exifPath=baseOutUrl+'.xml'
     converter.exif_to_xml(inputTiff,exifPath)
@@ -278,8 +276,30 @@ do i need something separate to add a book collection boj?
     except FedoraConnectionException:
         logging.exception('Error in adding OCR Datastream to:'+pagePid+'\n')
         
-        
-        #nef datastream
+    #exif datastream
+    try:
+        obj.addDataStream(u'EXIF', garbage, label=u'EXIF',
+             mimeType=u'text/xml', controlGroup=u'M',
+             logMessage=u'Added the archival EXIF file.')
+        logging.info('Added EXIF datastream to:'+pagePid)
+        ds=obj['EXIF']
+        ds.setContent(exifUrl)
+    except FedoraConnectionException:
+        logging.exception('Error in adding EXIF datastream to:'+pagePid+'\n')
+
+    objRelsExt=fedora_relationships.rels_ext(obj,[fedora_relationships.rels_namespace('pageNS','info:islandora/islandora-system:def/pageinfo#'),
+                                                  fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#')])
+    objRelsExt.addRelationship('isMemberOf',bookPid)
+    objRelsExt.addRelationship(fedora_relationships.rels_predicate('pageNS','isPageNumber'),fedora_relationships.rels_object(str(pageNumber),fedora_relationships.rels_object.LITERAL))
+    objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'archiveorg:pageCModel')
+    objRelsExt.update()
+     
+    '''    
+    
+    nefUrl=open(baseInUrl+'.nef')
+    dngUrl=open(baseInUrl+'.dng')
+    
+    #nef datastream
     try:
         obj.addDataStream(u'NEF', garbage, label=u'NEF',
              mimeType=u'image/x-nikon-nef', controlGroup=u'M',
@@ -301,25 +321,33 @@ do i need something separate to add a book collection boj?
         ds.setContent(dngUrl)
     except FedoraConnectionException:
         logging.exception('Error in adding DNG datastream to:'+pagePid+'\n')
-        
-    #exif datastream
-    try:
-        obj.addDataStream(u'EXIF', garbage, label=u'EXIF',
-             mimeType=u'text/xml', controlGroup=u'M',
-             logMessage=u'Added the archival EXIF file.')
-        logging.info('Added EXIF datastream to:'+pagePid)
-        ds=obj['EXIF']
-        ds.setContent(exifUrl)
-    except FedoraConnectionException:
-        logging.exception('Error in adding EXIF datastream to:'+pagePid+'\n')
-
-    objRelsExt=fedora_relationships.rels_ext(obj,[fedora_relationships.rels_namespace('pageNS','info:islandora/islandora-system:def/pageinfo#'),
-                                                  fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#')])
-    objRelsExt.addRelationship('isMemberOf',bookPid)
-    objRelsExt.addRelationship(fedora_relationships.rels_predicate('pageNS','isPageNumber'),fedora_relationships.rels_object(str(pageNumber),fedora_relationships.rels_object.LITERAL))
-    objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'archiveorg:pageCModel')
-    objRelsExt.update()
+    '''
+    #dynamic stuff here nef and dng for now
+    #grab all files that share a name with the tiff and do not use the already used extensions
+    dynamicDSList=os.listdir(fullTiffDir)
     
+    for dynamicDSFile in os.listdir(fullTiffDir):
+        if dynamicDSFile[0:dynamicDSFile.find('.')]!=tiffNameNoExt or (dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.tif' or \
+        dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.tiff' or dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.pdf' \
+        or dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.jp2' or dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.txt'\
+        or dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.xml'):
+            dynamicDSList.remove(dynamicDSFile)
+    #create the dynamic datastreams
+    for dynamicDSFile in dynamicDSList:
+        dynamicDSFileEXT=dynamicDSFile[dynamicDSFile.find('.')+1:len(dynamicDSFile)]
+        dynamicDSFileMimeType=misc.getMimeType(dynamicDSFileEXT)
+        dynamicDSFileHandle=open(os.path.join(fullTiffDir,dynamicDSFile),'r')
+        try:
+            obj.addDataStream(unicode(dynamicDSFileEXT), garbage, label=unicode(dynamicDSFileEXT),
+                 mimeType=unicode(dynamicDSFileMimeType), controlGroup=u'M',
+                 logMessage=unicode('Added the datastream:'+dynamicDSFileEXT))
+            logging.info('Added the datastream: '+dynamicDSFileEXT+' to: '+pagePid)
+            ds=obj[dynamicDSFileEXT]
+            ds.setContent(dynamicDSFileHandle)
+        except FedoraConnectionException:
+            logging.exception('Error in adding'+ dynamicDSFileEXT +'datastream to:'+pagePid+'\n')
+        
+          
     return True
 
 def resumePastOperations():
