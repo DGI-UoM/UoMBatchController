@@ -293,36 +293,8 @@ do i need something separate to add a book collection boj?
     objRelsExt.addRelationship(fedora_relationships.rels_predicate('pageNS','isPageNumber'),fedora_relationships.rels_object(str(pageNumber),fedora_relationships.rels_object.LITERAL))
     objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'archiveorg:pageCModel')
     objRelsExt.update()
-     
-    '''    
     
-    nefUrl=open(baseInUrl+'.nef')
-    dngUrl=open(baseInUrl+'.dng')
-    
-    #nef datastream
-    try:
-        obj.addDataStream(u'NEF', garbage, label=u'NEF',
-             mimeType=u'image/x-nikon-nef', controlGroup=u'M',
-             logMessage=u'Added the archival nef file.')
-        logging.info('Added NEF datastream to:'+pagePid)
-        ds=obj['NEF']
-        ds.setContent(nefUrl)
-    except FedoraConnectionException:
-        logging.exception('Error in adding NEF datastream to:'+pagePid+'\n')
-        
-        
-        #dng datastream
-    try:
-        obj.addDataStream(u'DNG', garbage, label=u'DNG',
-             mimeType=u'image/x-adobe-dng', controlGroup=u'M',
-             logMessage=u'Added the archival dng file.')
-        logging.info('Added DNG datastream to:'+pagePid)
-        ds=obj['DNG']
-        ds.setContent(dngUrl)
-    except FedoraConnectionException:
-        logging.exception('Error in adding DNG datastream to:'+pagePid+'\n')
-    '''
-    #dynamic stuff here nef and dng for now
+    #Dynamic Datastreams
     #grab all files that share a name with the tiff and do not use the already used extensions
     dynamicDSList=os.listdir(fullTiffDir)
     
