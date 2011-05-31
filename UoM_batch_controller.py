@@ -411,7 +411,7 @@ def sendSolr():
     solrFileHandle=open(solrFile,'r')
     solrFileContent=solrFileHandle.read()
     solrFileContent=solrFileContent[solrFileContent.index('\n'):len(solrFileContent)]
-    curlCall='curl '+solrUrl+'/update'+r" -H 'Content-Type: text/xml' --data-binary '"+solrFileContent+r"'"
+    curlCall='curl '+solrUrl+'/update?commit=true'+r" -H 'Content-Type: text/xml' --data-binary '"+solrFileContent+r"'"
     print(curlCall)
     r = subprocess.call(curlCall, shell=True)
     if r!=0:
