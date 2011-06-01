@@ -18,7 +18,6 @@ from fcrepo.connection import Connection, FedoraConnectionException
 from fcrepo.client import FedoraClient 
 from lxml import etree
 
-
 def getConfig():
     '''
     This funciton get all the configuration values for use by the script
@@ -36,6 +35,7 @@ def getConfig():
     
     
     return True
+
 def startFcrepo():
     '''
 helper function that starts up the fedora connection
@@ -82,7 +82,6 @@ This function creates the pdf of an entire book and ingests it as a DS into fedo
         logging.exception('Error in adding PDF datastream to:'+bookPid+'\n')
         return False
     return True
-
 
 def addBookToFedora():
     '''
@@ -131,15 +130,52 @@ Helper function that handles creating the book collection obj in fedora
         logging.info('Added TN datastream to:'+bookPid)
         ds=obj['TN']
         ds.setContent(tnUrl)
-    except FedoraConnectionException:
-        logging.error('Error in adding TN datastream to:'+bookPid+'\n')
+    except FedoraConnectionException as fedoraEX:
+        if str(fedoraEX.body).find('is currently being modified by another thread')!=-1:
+            logging.warning('Trouble (thread lock) adding TN datastream to: '+bookPid+' retrying.')
+            loop=True
+            while loop==True:
+                loop=False
+                try:
+                    obj.addDataStream(u'TN', u'aTmpStr', label=u'TN',
+                    mimeType=u'image/jpeg', controlGroup=u'M',
+                    logMessage=u'Added a jpeg thumbnail.')
+                    logging.info('Added TN datastream to:'+bookPid)
+                    ds=obj['TN']
+                    ds.setContent(tnUrl)
+                except FedoraConnectionException as fedoraEXL:
+                    if str(fedoraEXL.body).find('is currently being modified by another thread')!=-1:
+                        loop=True
+                        logging.warning('Trouble (thread lock) adding TN datastream to: '+bookPid+' retrying.')
+                    else:
+                        logging.error('Error in adding TN datastream to:'+bookPid+'\n')
+        else:
+            logging.error('Error in adding TN datastream to:'+bookPid+'\n')
     
     #configure rels ext
     objRelsExt=fedora_relationships.rels_ext(obj,fedora_relationships.rels_namespace('fedora-model','info:fedora/fedora-system:def/model#'))
     objRelsExt.addRelationship('isMemberOf','islandora:top')
     objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'archiveorg:bookCModel')
-    objRelsExt.update()
     
+    try:#trying to handle a bug/feature of locking fedora items
+        objRelsExt.update()
+    except FedoraConnectionException as fedoraEX:
+        if str(fedoraEX.body).find('is currently being modified by another thread')!=-1:
+            logging.warning('Trouble (thread lock) updating obj RELS-EXT: '+bookPid+' retrying.')
+            loop=True
+            while loop==True:
+                loop=False
+                try:
+                    objRelsExt.update()
+                except FedoraConnectionException as fedoraEXL:
+                    if str(fedoraEXL.body).find('is currently being modified by another thread')!=-1:
+                        loop=True
+                        logging.warning('Trouble (thread lock) updating obj RELS-EXT: '+bookPid+' retrying.')
+                    else:
+                        logging.error('Error updating obj RELS-EXT: '+bookPid)
+        else:
+            logging.error('Error updating obj RELS-EXT: '+bookPid+' retrying.')
+            
     #index the book in solr
     sendSolr()
     return True
@@ -292,6 +328,7 @@ do i need something separate to add a book collection boj?
     objRelsExt.addRelationship('isMemberOf',bookPid)
     objRelsExt.addRelationship(fedora_relationships.rels_predicate('pageNS','isPageNumber'),fedora_relationships.rels_object(str(pageNumber),fedora_relationships.rels_object.LITERAL))
     objRelsExt.addRelationship(fedora_relationships.rels_predicate('fedora-model','hasModel'),'archiveorg:pageCModel')
+    
     objRelsExt.update()
     
     #Dynamic Datastreams
@@ -412,7 +449,6 @@ def sendSolr():
     solrFileContent=solrFileHandle.read()
     solrFileContent=solrFileContent[solrFileContent.index('\n'):len(solrFileContent)]
     curlCall='curl '+solrUrl+'/update?commit=true'+r" -H 'Content-Type: text/xml' --data-binary '"+solrFileContent+r"'"
-    print(curlCall)
     r = subprocess.call(curlCall, shell=True)
     if r!=0:
         logging.error('Trouble currling with Solr power. Curl returned code: '+str(r))
