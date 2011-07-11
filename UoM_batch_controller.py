@@ -7,7 +7,7 @@ Created on Apr 5, 2011
 This script will read all the tif files in a dir and convert them to jp2 files
 it will also write the ocr for the tiffs [pdf and txt output]
 
-TODO: email integration:waiting on server
+@TODO: email integration:waiting on server
 '''
 from islandoraUtils import converter
 from islandoraUtils import fedora_relationships
@@ -92,8 +92,8 @@ Helper function that handles creating the book collection obj in fedora
 '''
 #create the fedora book page object
     global bookPid#global for write to file and use
-    #bookPid = fedora.getNextPID(u'uofm')
-    bookPid = fedora.getNextPID(u'Awill')
+    bookPid = fedora.getNextPID(u'uofm')
+    #bookPid = fedora.getNextPID(u'Awill')
     myLabel=unicode(os.path.basename(os.path.dirname(modsFilePath)))
     obj = fedora.createObject(bookPid, label=myLabel)
    
@@ -236,8 +236,8 @@ do i need something separate to add a book collection boj?
 
     
     #create the fedora book page object
-    #pagePid = fedora.getNextPID(u'uofm')
-    pagePid = fedora.getNextPID(u'Awill')
+    pagePid = fedora.getNextPID(u'uofm')
+    #pagePid = fedora.getNextPID(u'Awill')
     myLabel=unicode(tifDir+'_Page'+str(pageNumber))
     obj = fedora.createObject(pagePid, label=myLabel)
 
@@ -474,7 +474,8 @@ sourceDirList = ()#list of directories to be operated on
 #add cli,imageMagick to the path and hope for the best [remoove these on production server]
 os.environ['PATH']=os.environ["PATH"]+':/usr/local/ABBYY/FREngine-Linux-i686-9.0.0.126675/Samples/Samples/CommandLineInterface'
 os.environ['PATH']=os.environ["PATH"]+':/usr/local/Linux-x86-64'
-os.environ['PATH']=os.environ["PATH"]+':/usr/tmpDL/UoM/src/UoMScripts/Exif'
+os.environ['PATH']=os.environ["PATH"]+':/usr/local/Exif'
+os.environ['PATH']=os.environ["PATH"]+':/usr/bin'
 
 #configure logging
 logDir=os.path.join(sourceDir,'logs')
