@@ -475,7 +475,7 @@ sourceDirList = ()#list of directories to be operated on
 os.environ['PATH']=os.environ["PATH"]+':/usr/local/ABBYY/FREngine-Linux-i686-9.0.0.126675/Samples/Samples/CommandLineInterface'
 os.environ['PATH']=os.environ["PATH"]+':/usr/local/Linux-x86-64'
 os.environ['PATH']=os.environ["PATH"]+':/usr/local/Exif'
-os.environ['PATH']=os.environ["PATH"]+':/usr/bin'
+os.environ['PATH']='/usr/local/bin:'+os.environ["PATH"]#need to prepend this one for precedence over pre-existing convert command
 
 #configure logging
 logDir=os.path.join(sourceDir,'logs')
