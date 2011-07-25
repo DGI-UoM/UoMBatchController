@@ -393,10 +393,31 @@ Helper function that will finish off the directory that was being worked on duri
     #remove that file so that it doesn't get used as a resume point again
     os.remove(resumeFilePath)
     #do that dir
-    for file in resumeFiles:
+    resumeFilesCopy=resumeFiles#python for loop is not as forgiving as php foreach
+    for file in resumeFilesCopy:
+        #if it is past 7:30am stop the script and record current state
+        currentTime=time.localtime()
+        if (currentTime[3]>=7 and currentTime[4]>=30) or currentTime[3]>=8:
+            #record state [current directory and files checked already]
+            outFile=open(resumeFilePath,'w')
+            outFile.write(resumeDirIn+'\n')
+            outFile.write(resumeDirOut+'\n')
+            outFile.write(bookPid+'\n')
+            outFile.write(str(pagesDict)+'\n')
+            for fileToWrite in resumeFiles:
+                outFile.write(fileToWrite+'\n')
+            outFile.close()
+            #exit script
+            logging.warning('The ingest has stopped for day time activities')
+            sys.exit()
+            
         if file[(len(file)-4):len(file)]=='.tif' or file[(len(file)-5):len(file)]=='.tiff' :
             logging.info('Performing operations on file:'+file)
             addBookPageToFedora(os.path.join(resumeDirIn,file), resumeDirOut)
+            
+            #remove file that has been operated on so it will not be operated on again on a script resume
+        if resumeFiles.count(file)!=0:#fixes a bug where created files were throwing errors
+            resumeFiles.remove(file)
     #remove base dir
     createBookPDF(resumeDirOut)
     shutil.rmtree(resumeDirIn)
