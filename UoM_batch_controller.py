@@ -393,11 +393,12 @@ Helper function that will finish off the directory that was being worked on duri
     #remove that file so that it doesn't get used as a resume point again
     os.remove(resumeFilePath)
     #do that dir
-    resumeFilesCopy=resumeFiles#python for loop is not as forgiving as php foreach
+    resumeFilesCopy=list(resumeFiles)#python for loop is not as forgiving as php foreach, also python lists are objects and therefore use references not values for copy
     for file in resumeFilesCopy:
         #if it is past 7:30am stop the script and record current state
         currentTime=time.localtime()
-        if (currentTime[3]>=7 and currentTime[4]>=30) or currentTime[3]>=8:
+        #if (currentTime[3]>=7 and currentTime[4]>=30) or currentTime[3]>=8:
+        if (currentTime[4]>=30):
             #record state [current directory and files checked already]
             outFile=open(resumeFilePath,'w')
             outFile.write(resumeDirIn+'\n')
@@ -429,11 +430,13 @@ def performOpps():
 go through a directory performing the conversions OCR etc.
 '''
     logging.info('MARC file found performing operations.')
+    global fileList
     for file in os.listdir(currentDir):
         
         #if it is past 7:30am stop the script and record current state
         currentTime=time.localtime()
-        if (currentTime[3]>=7 and currentTime[4]>=30) or currentTime[3]>=8:
+        #if (currentTime[3]>=7 and currentTime[4]>=30) or currentTime[3]>=8:
+        if (currentTime[4]>=30):
             #record state [current directory and files checked already]
             outFile=open(resumeFilePath,'w')
             outFile.write(currentDir+'\n')
