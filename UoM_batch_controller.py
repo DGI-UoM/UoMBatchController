@@ -183,7 +183,7 @@ Helper function that handles creating the book collection obj in fedora
 def addBookPageToFedora(inputTiff, tmpDir):
     '''
 Helper function that handles adding and configuring a fedora object for a book page based on the input image and mods file
-do i need something separate to add a book collection boj?
+do i need something separate to add a book collection obj?
 @param inputTiff:  the archival data source
 @param tmpDir: file directory where non-archeival stuff gets put
 
@@ -397,8 +397,8 @@ Helper function that will finish off the directory that was being worked on duri
     for file in resumeFilesCopy:
         #if it is past 7:30am stop the script and record current state
         currentTime=time.localtime()
-        #if (currentTime[3]>=7 and currentTime[4]>=30) or currentTime[3]>=8:
-        if (currentTime[4]>=30):
+        if (currentTime[3]>=7 and currentTime[4]>=30) or currentTime[3]>=8:
+        #if (currentTime[4]>=30):
             #record state [current directory and files checked already]
             outFile=open(resumeFilePath,'w')
             outFile.write(resumeDirIn+'\n')
@@ -435,8 +435,8 @@ go through a directory performing the conversions OCR etc.
         
         #if it is past 7:30am stop the script and record current state
         currentTime=time.localtime()
-        #if (currentTime[3]>=7 and currentTime[4]>=30) or currentTime[3]>=8:
-        if (currentTime[4]>=30):
+        if (currentTime[3]>=7 and currentTime[4]>=30) or currentTime[3]>=8:
+        #if (currentTime[4]>=30):
             #record state [current directory and files checked already]
             outFile=open(resumeFilePath,'w')
             outFile.write(currentDir+'\n')
