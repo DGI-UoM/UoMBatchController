@@ -334,12 +334,12 @@ do i need something separate to add a book collection obj?
     #Dynamic Datastreams
     #grab all files that share a name with the tiff and do not use the already used extensions
     dynamicDSList=os.listdir(fullTiffDir)
-    
-    for dynamicDSFile in os.listdir(fullTiffDir):
+    dynamicDSListCopy=list(dynamicDSList)#better than taking os.listdir twice
+    for dynamicDSFile in dynamicDSListCopy:
         if dynamicDSFile[0:dynamicDSFile.find('.')]!=tiffNameNoExt or (dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.tif' or \
         dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.tiff' or dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.pdf' \
         or dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.jp2' or dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.txt'\
-        or dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.xml'):
+        or dynamicDSFile[dynamicDSFile.find('.'):len(dynamicDSFile)]=='.xml'):#@todo: refactor to use regualar expression module?
             dynamicDSList.remove(dynamicDSFile)
     #create the dynamic datastreams
     for dynamicDSFile in dynamicDSList:
